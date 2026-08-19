@@ -1,399 +1,424 @@
-
+<!DOCTYPE html>
 <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Maletín Tracker PWA</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Maletín Tracker PWA</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React y Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS y JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <link id="manifest-link" rel="manifest" href="">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { darkbg: '#0f172a', cardbg: '#1e293b', accent: '#f59e0b' } } }
+        }
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        <!-- Tailwind CSS -->
-        <script src="https://cdn.tailwindcss.com"></script>
+        @keyframes sos-flash {
+            0%, 100% { background-color: #ef4444; color: white; box-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+            50% { background-color: #991b1b; color: #fecaca; box-shadow: 0 0 5px rgba(239, 68, 68, 0.2); }
+        }
+        .sos-active { animation: sos-flash 1s infinite; }
         
-        <!-- React y Babel -->
-        <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-        <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-        <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-        <!-- Font Awesome -->
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        #map { height: 100%; width: 100%; border-radius: 0.75rem; z-index: 10; }
         
-        <!-- Leaflet CSS y JS -->
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-        <link id="manifest-link" rel="manifest" href="">
-    
-        <script>
-            tailwind.config = {
-                darkMode: 'class',
-                theme: { extend: { colors: { darkbg: '#0f172a', cardbg: '#1e293b', accent: '#f59e0b' } } }
-            }
-        </script>
-        <style>
-            body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; }
-            .no-scrollbar::-webkit-scrollbar { display: none; }
-            .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-            
-            @keyframes sos-flash {
-                0%, 100% { background-color: #ef4444; color: white; box-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
-                50% { background-color: #991b1b; color: #fecaca; box-shadow: 0 0 5px rgba(239, 68, 68, 0.2); }
-            }
-            .sos-active { animation: sos-flash 1s infinite; }
-            
-            #map { height: 100%; width: 100%; border-radius: 0.75rem; z-index: 10; }
-            
-            .marker-pulse { animation: pulse 2s infinite; }
-            @keyframes pulse {
-                0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
-                70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-                100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
-            }
-        </style>
-    </head>
-    <body class="antialiased min-h-screen">
-        <div id="root"></div>
-    
-        <script>
-            const manifest = {
-                name: "Maletín IoT", short_name: "Maletín", description: "Telemetría y GPS Híbrido",
-                start_url: "./", display: "standalone", background_color: "#0f172a", theme_color: "#f59e0b",
-                icons: [{ src: "https://cdn-icons-png.flaticon.com/512/3254/3254068.png", sizes: "512x512", type: "image/png" }]
-            };
-            document.getElementById('manifest-link').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'}));
-    
-            const swCode = `self.addEventListener('install', e => self.skipWaiting()); self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));`;
-            if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    try { navigator.serviceWorker.register(URL.createObjectURL(new Blob([swCode], {type: 'application/javascript'}))); } catch(e) {}
-                });
-            }
-        </script>
-    
-        <script type="text/babel">
-            const { useState, useEffect, useRef } = React;
-    
-            const colorClasses = {
-                yellow: 'text-yellow-400', blue: 'text-blue-400', purple: 'text-purple-400',
-                red: 'text-red-400', emerald: 'text-emerald-400'
-            };
-    
-            const StatCard = ({ title, value, unit, icon, color }) => (
-                <div className="p-4 bg-cardbg rounded-xl shadow-lg border border-slate-700 relative overflow-hidden">
-                    <div className="flex justify-between items-start mb-2 relative z-10">
-                        <div className={`w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center ${colorClasses[color] || 'text-amber-400'}`}>
-                            <i className={`fas ${icon} text-lg`}></i>
-                        </div>
-                    </div>
-                    <div className="relative z-10">
-                        <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{title}</h3>
-                        <div className="flex items-baseline gap-1">
-                            <span className="text-2xl font-bold text-white">{value}</span>
-                            <span className="text-slate-400 text-sm">{unit}</span>
-                        </div>
+        .marker-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen">
+    <div id="root"></div>
+
+    <script>
+        const manifest = {
+            name: "Maletín IoT", short_name: "Maletín", description: "Telemetría y GPS Híbrido",
+            start_url: "./", display: "standalone", background_color: "#0f172a", theme_color: "#f59e0b",
+            icons: [{ src: "https://cdn-icons-png.flaticon.com/512/3254/3254068.png", sizes: "512x512", type: "image/png" }]
+        };
+        document.getElementById('manifest-link').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'}));
+
+        const swCode = `self.addEventListener('install', e => self.skipWaiting()); self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));`;
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                try { navigator.serviceWorker.register(URL.createObjectURL(new Blob([swCode], {type: 'application/javascript'}))); } catch(e) {}
+            });
+        }
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        const colorClasses = {
+            yellow: 'text-yellow-400', blue: 'text-blue-400', purple: 'text-purple-400',
+            red: 'text-red-400', emerald: 'text-emerald-400'
+        };
+
+        const StatCard = ({ title, value, unit, icon, color }) => (
+            <div className="p-4 bg-cardbg rounded-xl shadow-lg border border-slate-700 relative overflow-hidden">
+                <div className="flex justify-between items-start mb-2 relative z-10">
+                    <div className={`w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center ${colorClasses[color] || 'text-amber-400'}`}>
+                        <i className={`fas ${icon} text-lg`}></i>
                     </div>
                 </div>
+                <div className="relative z-10">
+                    <h3 className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{title}</h3>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-white">{value}</span>
+                        <span className="text-slate-400 text-sm">{unit}</span>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const StageBadge = ({ stage }) => {
+            const colors = {
+                'BULK': 'bg-red-500/20 text-red-400 border-red-500/50',
+                'ABSORCION': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+                'FLOTACION': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'
+            };
+            return (
+                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${colors[stage] || 'bg-slate-700 text-slate-300'}`}>
+                    <i className="fas fa-battery-bolt mr-1"></i> {stage}
+                </span>
             );
-    
-            const StageBadge = ({ stage }) => {
-                const colors = {
-                    'BULK': 'bg-red-500/20 text-red-400 border-red-500/50',
-                    'ABSORCION': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-                    'FLOTACION': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50'
-                };
-                return (
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${colors[stage] || 'bg-slate-700 text-slate-300'}`}>
-                        <i className="fas fa-battery-bolt mr-1"></i> {stage}
-                    </span>
-                );
+        };
+
+        const translateCardinal = (dir) => {
+            const map = {
+                'N': 'Norte', 'NNE': 'Nor-Noreste', 'NE': 'Noreste', 'ENE': 'Este-Noreste',
+                'E': 'Este', 'ESE': 'Este-Sureste', 'SE': 'Sureste', 'SSE': 'Sur-Sureste',
+                'S': 'Sur', 'SSW': 'Sur-Suroeste', 'SW': 'Suroeste', 'WSW': 'Oeste-Suroeste',
+                'W': 'Oeste', 'WNW': 'Oeste-Noroeste', 'NW': 'Noroeste', 'NNW': 'Nor-Noroeste', 'N/A': 'N/A'
             };
-    
-            const translateCardinal = (dir) => {
-                const map = {
-                    'N': 'Norte', 'NNE': 'Nor-Noreste', 'NE': 'Noreste', 'ENE': 'Este-Noreste',
-                    'E': 'Este', 'ESE': 'Este-Sureste', 'SE': 'Sureste', 'SSE': 'Sur-Sureste',
-                    'S': 'Sur', 'SSW': 'Sur-Suroeste', 'SW': 'Suroeste', 'WSW': 'Oeste-Suroeste',
-                    'W': 'Oeste', 'WNW': 'Oeste-Noroeste', 'NW': 'Noroeste', 'NNW': 'Nor-Noroeste', 'N/A': 'N/A'
-                };
-                return map[dir] || dir;
-            };
-    
-            const getSignalStatus = (rssi) => {
-                if (!rssi || rssi === 0) return { text: "Sin señal", color: "text-slate-500" };
-                if (rssi >= -80) return { text: "Excelente", color: "text-green-500" };
-                if (rssi >= -100) return { text: "Buena", color: "text-emerald-400" };
-                if (rssi >= -115) return { text: "Débil", color: "text-yellow-500" };
-                return { text: "Mala", color: "text-red-500" };
-            };
-    
-            // UUIDs para Web Bluetooth (Deberán coincidir con el código C++ del ESP32)
-            const BLE_SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-            const BLE_CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
-    
-            const App = () => {
-                const [activeTab, setActiveTab] = useState('telemetria');
-                const [wsConnected, setWsConnected] = useState(false);
-                const [bleConnected, setBleConnected] = useState(false);
-                const [espIp, setEspIp] = useState('192.168.4.1'); 
-                const mapRef = useRef(null);
-                const markerRef = useRef(null);
-                const baseMarkerRef = useRef(null);
-    
-                const [data, setData] = useState({
-                    pwrSolar: 0.0, pwrHidro: 0.0, pwrSalida: 0.0,
-                    tempInt: 0.0, vBatInt: 0.0, vBatExt: 0.0,
-                    stage: "BULK", lat: -32.6186, lon: -60.1558, sos: false,
-                    baseLat: 0.0, baseLon: 0.0, distancia: 0, rumbo: "N/A", rssi: 0
-                });
-    
-                // Conexión WebSockets (WiFi)
-                useEffect(() => {
-                    let ws;
-                    const connectWS = () => {
-                        ws = new WebSocket(`ws://${espIp}:81`);
-                        ws.onopen = () => setWsConnected(true);
-                        ws.onmessage = (e) => {
-                            try { setData(prev => ({...prev, ...JSON.parse(e.data)})); } catch (err) {}
-                        };
-                        ws.onclose = () => { setWsConnected(false); setTimeout(connectWS, 3000); };
+            return map[dir] || dir;
+        };
+
+        const getSignalStatus = (rssi) => {
+            if (!rssi || rssi === 0) return { text: "Sin señal", color: "text-slate-500" };
+            if (rssi >= -80) return { text: "Excelente", color: "text-green-500" };
+            if (rssi >= -100) return { text: "Buena", color: "text-emerald-400" };
+            if (rssi >= -115) return { text: "Débil", color: "text-yellow-500" };
+            return { text: "Mala", color: "text-red-500" };
+        };
+
+        // UUIDs para Web Bluetooth (Deberán coincidir con el código C++ del ESP32)
+        const BLE_SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const BLE_CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('telemetria');
+            const [wsConnected, setWsConnected] = useState(false);
+            const [bleConnected, setBleConnected] = useState(false);
+            const [espIp, setEspIp] = useState('192.168.4.1'); 
+            const mapRef = useRef(null);
+            const markerRef = useRef(null);
+            const baseMarkerRef = useRef(null);
+
+            // 1. Valores iniciales realistas para la presentación
+            const [data, setData] = useState({
+                pwrSolar: 45.2, pwrHidro: 120.5, pwrSalida: 15.3,
+                tempInt: 38.5, vBatInt: 13.8, vBatExt: 12.1,
+                stage: "ABSORCION", lat: -31.858603, lon: -59.030685, sos: false,
+                baseLat: -31.860000, baseLon: -59.030000, distancia: 168, rumbo: "NW", rssi: -82
+            });
+
+            // 2. MODO DEMO: Simulación de fluctuaciones dinámicas
+            useEffect(() => {
+                // Si se conecta de verdad al maletín, la simulación se detiene sola
+                if (wsConnected || bleConnected) return; 
+                
+                const interval = setInterval(() => {
+                    setData(prev => ({
+                        ...prev,
+                        pwrSolar: Math.max(0, parseFloat((prev.pwrSolar + (Math.random() * 2 - 1)).toFixed(1))),
+                        pwrHidro: Math.max(0, parseFloat((prev.pwrHidro + (Math.random() * 4 - 2)).toFixed(1))),
+                        pwrSalida: Math.max(0, parseFloat((prev.pwrSalida + (Math.random() * 1 - 0.5)).toFixed(1))),
+                        tempInt: parseFloat((prev.tempInt + (Math.random() * 0.4 - 0.2)).toFixed(1)),
+                        vBatInt: Math.min(14.4, parseFloat((prev.vBatInt + (Math.random() * 0.04 - 0.02)).toFixed(2))),
+                        rssi: -82 + Math.floor(Math.random() * 6 - 3)
+                    }));
+                }, 2000); // Fluctúa cada 2 segundos
+                
+                return () => clearInterval(interval);
+            }, [wsConnected, bleConnected]);
+
+            // Conexión WebSockets (WiFi)
+            useEffect(() => {
+                let ws;
+                const connectWS = () => {
+                    ws = new WebSocket(`ws://${espIp}:81`);
+                    ws.onopen = () => setWsConnected(true);
+                    ws.onmessage = (e) => {
+                        try { setData(prev => ({...prev, ...JSON.parse(e.data)})); } catch (err) {}
                     };
-                    // connectWS(); // Se puede activar automáticamente o dejarlo para el botón
-                    return () => { if(ws) ws.close(); }
-                }, [espIp]);
-    
-                // Conexión Web Bluetooth (BLE)
-                const connectBluetooth = async () => {
-                    try {
-                        const device = await navigator.bluetooth.requestDevice({
-                            filters: [{ namePrefix: 'MALETIN' }, { namePrefix: 'BASE' }],
-                            optionalServices: [BLE_SERVICE_UUID]
-                        });
-                        
-                        const server = await device.gatt.connect();
-                        const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-                        const characteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
-                        
-                        characteristic.startNotifications();
-                        characteristic.addEventListener('characteristicvaluechanged', (e) => {
-                            const decoder = new TextDecoder('utf-8');
-                            const jsonString = decoder.decode(e.target.value);
-                            try {
-                                setData(prev => ({...prev, ...JSON.parse(jsonString)}));
-                            } catch (err) { console.log("Error parseando BLE JSON", err); }
-                        });
-                        
-                        setBleConnected(true);
-                        device.addEventListener('gattserverdisconnected', () => setBleConnected(false));
-                    } catch (error) {
-                        console.log("Error Bluetooth:", error);
-                        alert("No se pudo conectar al Bluetooth o fue cancelado.");
-                    }
+                    ws.onclose = () => { setWsConnected(false); setTimeout(connectWS, 3000); };
                 };
-    
-                useEffect(() => {
-                    if (activeTab === 'gps' && !mapRef.current) {
-                        mapRef.current = L.map('map').setView([data.lat, data.lon], 15);
-                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                            attribution: '&copy; OpenStreetMap'
-                        }).addTo(mapRef.current);
-    
-                        const iconMaletin = L.divIcon({
-                            html: '<div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg marker-pulse"></div>',
-                            className: 'custom-div-icon', iconSize: [16, 16], iconAnchor: [8, 8]
-                        });
-                        markerRef.current = L.marker([data.lat, data.lon], {icon: iconMaletin}).addTo(mapRef.current);
-    
-                        const iconBase = L.divIcon({
-                            html: '<div class="w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-lg"></div>',
-                            className: 'custom-div-icon', iconSize: [16, 16], iconAnchor: [8, 8]
-                        });
-                        baseMarkerRef.current = L.marker([data.baseLat || data.lat, data.baseLon || data.lon], {icon: iconBase}).addTo(mapRef.current);
-                    }
-    
-                    if (mapRef.current) {
-                        if (markerRef.current) markerRef.current.setLatLng([data.lat, data.lon]);
-                        if (baseMarkerRef.current && data.baseLat !== 0) baseMarkerRef.current.setLatLng([data.baseLat, data.baseLon]);
-                        mapRef.current.setView([data.lat, data.lon]);
-                    }
-                }, [activeTab, data.lat, data.lon, data.baseLat, data.baseLon]);
-    
-                return (
-                    <div className="max-w-md mx-auto bg-darkbg pb-20 relative min-h-screen">
-                        {data.sos && (
-                            <div className="sos-active w-full p-3 flex items-center justify-center gap-3 sticky top-0 z-50">
-                                <i className="fas fa-triangle-exclamation text-2xl"></i>
-                                <div className="font-bold text-center">
-                                    <p className="text-lg leading-tight">ALERTA SOS ACTIVADA</p>
-                                    <p className="text-xs">Se requiere asistencia inmediata</p>
+                // connectWS(); // Se puede activar automáticamente o dejarlo para el botón
+                return () => { if(ws) ws.close(); }
+            }, [espIp]);
+
+            // Conexión Web Bluetooth (BLE)
+            const connectBluetooth = async () => {
+                try {
+                    const device = await navigator.bluetooth.requestDevice({
+                        filters: [{ namePrefix: 'MALETIN' }, { namePrefix: 'BASE' }],
+                        optionalServices: [BLE_SERVICE_UUID]
+                    });
+                    
+                    const server = await device.gatt.connect();
+                    const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+                    const characteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
+                    
+                    characteristic.startNotifications();
+                    characteristic.addEventListener('characteristicvaluechanged', (e) => {
+                        const decoder = new TextDecoder('utf-8');
+                        const jsonString = decoder.decode(e.target.value);
+                        try {
+                            setData(prev => ({...prev, ...JSON.parse(jsonString)}));
+                        } catch (err) { console.log("Error parseando BLE JSON", err); }
+                    });
+                    
+                    setBleConnected(true);
+                    device.addEventListener('gattserverdisconnected', () => setBleConnected(false));
+                } catch (error) {
+                    console.log("Error Bluetooth:", error);
+                    alert("No se pudo conectar al Bluetooth o fue cancelado.");
+                }
+            };
+
+            useEffect(() => {
+                if (activeTab === 'gps' && !mapRef.current) {
+                    mapRef.current = L.map('map').setView([data.lat, data.lon], 15);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; OpenStreetMap'
+                    }).addTo(mapRef.current);
+
+                    const iconMaletin = L.divIcon({
+                        html: '<div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg marker-pulse"></div>',
+                        className: 'custom-div-icon', iconSize: [16, 16], iconAnchor: [8, 8]
+                    });
+                    markerRef.current = L.marker([data.lat, data.lon], {icon: iconMaletin}).addTo(mapRef.current);
+
+                    const iconBase = L.divIcon({
+                        html: '<div class="w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-lg"></div>',
+                        className: 'custom-div-icon', iconSize: [16, 16], iconAnchor: [8, 8]
+                    });
+                    baseMarkerRef.current = L.marker([data.baseLat || data.lat, data.baseLon || data.lon], {icon: iconBase}).addTo(mapRef.current);
+                }
+
+                if (mapRef.current) {
+                    if (markerRef.current) markerRef.current.setLatLng([data.lat, data.lon]);
+                    if (baseMarkerRef.current && data.baseLat !== 0) baseMarkerRef.current.setLatLng([data.baseLat, data.baseLon]);
+                    mapRef.current.setView([data.lat, data.lon]);
+                }
+            }, [activeTab, data.lat, data.lon, data.baseLat, data.baseLon]);
+
+            return (
+                <div className="max-w-md mx-auto bg-darkbg pb-20 relative min-h-screen">
+                    {data.sos && (
+                        <div className="sos-active w-full p-3 flex items-center justify-center gap-3 sticky top-0 z-50">
+                            <i className="fas fa-triangle-exclamation text-2xl"></i>
+                            <div className="font-bold text-center">
+                                <p className="text-lg leading-tight">ALERTA SOS ACTIVADA</p>
+                                <p className="text-xs">Se requiere asistencia inmediata</p>
+                            </div>
+                        </div>
+                    )}
+
+                    <header className="bg-cardbg border-b border-slate-800 p-4 sticky top-0 z-40 shadow-md">
+                        <div className="flex justify-between items-center mb-3">
+                            <div>
+                                {/* 3. Botón oculto para activar SOS tocando el título */}
+                                <h1 
+                                    className="text-xl font-bold text-white flex items-center gap-2 cursor-pointer" 
+                                    onClick={() => setData(prev => ({...prev, sos: !prev.sos}))}
+                                >
+                                    <i className="fas fa-suitcase-medical text-accent"></i> Maletín Gen
+                                </h1>
+                                <div className="flex items-center gap-3 mt-1">
+                                    <div className="flex items-center gap-1">
+                                        <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                        <span className="text-[10px] text-slate-400">WiFi</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <div className={`w-2 h-2 rounded-full ${bleConnected ? 'bg-blue-500' : 'bg-slate-600'}`}></div>
+                                        <span className="text-[10px] text-slate-400">BLE</span>
+                                    </div>
                                 </div>
+                            </div>
+                            <StageBadge stage={data.stage} />
+                        </div>
+                        
+                        {!wsConnected && !bleConnected && (
+                            <div className="flex gap-2">
+                                <button onClick={connectBluetooth} className="bg-blue-600/20 border border-blue-500/50 text-blue-400 px-3 py-2 rounded text-sm font-bold flex-1 flex justify-center items-center gap-2">
+                                    <i className="fab fa-bluetooth-b"></i> Conectar BLE
+                                </button>
+                                <button className="bg-slate-700 px-3 py-2 rounded text-sm text-white font-bold" onClick={() => setEspIp(espIp + ' ')}>
+                                    <i className="fas fa-wifi"></i> WiFi
+                                </button>
                             </div>
                         )}
-    
-                        <header className="bg-cardbg border-b border-slate-800 p-4 sticky top-0 z-40 shadow-md">
-                            <div className="flex justify-between items-center mb-3">
+                    </header>
+
+                    <main className="p-4 space-y-6">
+                        
+                        <div className={activeTab === 'telemetria' ? 'block animate-fade-in' : 'hidden'}>
+                            <h2 className="text-sm font-bold text-slate-400 mb-3"><i className="fas fa-solar-panel mr-2"></i>Generación y Carga</h2>
+                            <div className="grid grid-cols-2 gap-3 mb-6">
+                                <StatCard title="Solar" value={data.pwrSolar.toFixed(1)} unit="W" icon="fa-sun" color="yellow" />
+                                <StatCard title="Hidro" value={data.pwrHidro.toFixed(1)} unit="W" icon="fa-water" color="blue" />
+                                <StatCard title="Consumo Ext." value={data.pwrSalida.toFixed(1)} unit="W" icon="fa-plug" color="purple" />
+                                <StatCard title="Temp. Interna" value={data.tempInt.toFixed(1)} unit="°C" icon="fa-thermometer-half" color={data.tempInt > 40 ? 'red' : 'emerald'} />
+                            </div>
+
+                            <h2 className="text-sm font-bold text-slate-400 mb-3"><i className="fas fa-car-battery mr-2"></i>Gestión de Baterías</h2>
+                            <div className="bg-cardbg rounded-xl p-4 shadow-lg border border-slate-700 space-y-4">
                                 <div>
-                                    <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                                        <i className="fas fa-suitcase-medical text-accent"></i> Maletín Gen
-                                    </h1>
-                                    <div className="flex items-center gap-3 mt-1">
-                                        <div className="flex items-center gap-1">
-                                            <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                                            <span className="text-[10px] text-slate-400">WiFi</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <div className={`w-2 h-2 rounded-full ${bleConnected ? 'bg-blue-500' : 'bg-slate-600'}`}></div>
-                                            <span className="text-[10px] text-slate-400">BLE</span>
-                                        </div>
+                                    <div className="flex justify-between items-end mb-1">
+                                        <span className="text-sm text-slate-300 font-medium">Bat. Interna (Maletín)</span>
+                                        <span className="text-lg text-white font-bold">{data.vBatInt.toFixed(1)}V</span>
+                                    </div>
+                                    <div className="w-full bg-slate-800 rounded-full h-2">
+                                        <div className={`h-2 rounded-full ${data.vBatInt > 12.8 ? 'bg-emerald-500' : data.vBatInt > 12.0 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                                             style={{width: `${Math.min(100, Math.max(0, ((data.vBatInt - 11.0)/(14.4 - 11.0)) * 100))}%`}}></div>
                                     </div>
                                 </div>
-                                <StageBadge stage={data.stage} />
+
+                                <div>
+                                    <div className="flex justify-between items-end mb-1">
+                                        <span className="text-sm text-slate-300 font-medium">Bat. Externa (Isla)</span>
+                                        <span className="text-lg text-slate-400 font-bold">{data.vBatExt > 1.0 ? data.vBatExt.toFixed(1) + 'V' : 'Desconectada'}</span>
+                                    </div>
+                                    <div className="w-full bg-slate-800 rounded-full h-2">
+                                        <div className="bg-purple-500 h-2 rounded-full" 
+                                             style={{width: `${data.vBatExt > 1.0 ? Math.min(100, Math.max(0, ((data.vBatExt - 11.0)/(14.4 - 11.0)) * 100)) : 0}%`}}></div>
+                                    </div>
+                                </div>
                             </div>
-                            
-                            {!wsConnected && !bleConnected && (
-                                <div className="flex gap-2">
-                                    <button onClick={connectBluetooth} className="bg-blue-600/20 border border-blue-500/50 text-blue-400 px-3 py-2 rounded text-sm font-bold flex-1 flex justify-center items-center gap-2">
-                                        <i className="fab fa-bluetooth-b"></i> Conectar BLE
-                                    </button>
-                                    <button className="bg-slate-700 px-3 py-2 rounded text-sm text-white font-bold" onClick={() => setEspIp(espIp + ' ')}>
-                                        <i className="fas fa-wifi"></i> WiFi
-                                    </button>
-                                </div>
-                            )}
-                        </header>
-    
-                        <main className="p-4 space-y-6">
-                            
-                            <div className={activeTab === 'telemetria' ? 'block animate-fade-in' : 'hidden'}>
-                                <h2 className="text-sm font-bold text-slate-400 mb-3"><i className="fas fa-solar-panel mr-2"></i>Generación y Carga</h2>
-                                <div className="grid grid-cols-2 gap-3 mb-6">
-                                    <StatCard title="Solar" value={data.pwrSolar.toFixed(1)} unit="W" icon="fa-sun" color="yellow" />
-                                    <StatCard title="Hidro" value={data.pwrHidro.toFixed(1)} unit="W" icon="fa-water" color="blue" />
-                                    <StatCard title="Consumo Ext." value={data.pwrSalida.toFixed(1)} unit="W" icon="fa-plug" color="purple" />
-                                    <StatCard title="Temp. Interna" value={data.tempInt.toFixed(1)} unit="°C" icon="fa-thermometer-half" color={data.tempInt > 40 ? 'red' : 'emerald'} />
-                                </div>
-    
-                                <h2 className="text-sm font-bold text-slate-400 mb-3"><i className="fas fa-car-battery mr-2"></i>Gestión de Baterías</h2>
-                                <div className="bg-cardbg rounded-xl p-4 shadow-lg border border-slate-700 space-y-4">
+                        </div>
+
+                        <div className={activeTab === 'gps' ? 'block animate-fade-in' : 'hidden'}>
+                            <div className="bg-cardbg rounded-xl shadow-lg border border-slate-700 overflow-hidden flex flex-col" style={{height: '65vh'}}>
+                                <div className="p-3 bg-slate-800 border-b border-slate-700 flex justify-between items-center z-20">
                                     <div>
-                                        <div className="flex justify-between items-end mb-1">
-                                            <span className="text-sm text-slate-300 font-medium">Bat. Interna (Maletín)</span>
-                                            <span className="text-lg text-white font-bold">{data.vBatInt.toFixed(1)}V</span>
-                                        </div>
-                                        <div className="w-full bg-slate-800 rounded-full h-2">
-                                            <div className={`h-2 rounded-full ${data.vBatInt > 12.8 ? 'bg-emerald-500' : data.vBatInt > 12.0 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-                                                 style={{width: `${Math.min(100, Math.max(0, ((data.vBatInt - 11.0)/(14.4 - 11.0)) * 100))}%`}}></div>
-                                        </div>
+                                        <h3 className="text-sm font-bold text-white"><i className="fas fa-location-crosshairs mr-2 text-blue-400"></i>Ubicación en vivo</h3>
+                                        <p className="text-xs text-slate-400">Maletín: {data.lat.toFixed(5)}, {data.lon.toFixed(5)}</p>
                                     </div>
-    
+                                    {data.lat === 0.0 ? (
+                                        <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded font-bold uppercase">Buscando sats</span>
+                                    ) : (
+                                        <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded font-bold uppercase">Fijado 3D</span>
+                                    )}
+                                </div>
+                                <div className="flex-1 relative bg-slate-900 z-10">
+                                    <div id="map"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={activeTab === 'base' ? 'block animate-fade-in' : 'hidden'}>
+                            <h2 className="text-sm font-bold text-slate-400 mb-3"><i className="fas fa-tower-broadcast mr-2"></i>Centro de Comando (Base)</h2>
+                            <div className="bg-cardbg rounded-xl p-4 shadow-lg border border-slate-700 space-y-4">
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-slate-800 p-3 rounded-lg border border-slate-700">
+                                        <span className="text-xs text-slate-400 block mb-1">Latitud Base</span>
+                                        <span className="text-sm text-emerald-400 font-mono font-bold">{data.baseLat !== 0 ? data.baseLat.toFixed(5) : 'Buscando...'}</span>
+                                    </div>
+                                    <div className="bg-slate-800 p-3 rounded-lg border border-slate-700">
+                                        <span className="text-xs text-slate-400 block mb-1">Longitud Base</span>
+                                        <span className="text-sm text-emerald-400 font-mono font-bold">{data.baseLon !== 0 ? data.baseLon.toFixed(5) : 'Buscando...'}</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
                                     <div>
-                                        <div className="flex justify-between items-end mb-1">
-                                            <span className="text-sm text-slate-300 font-medium">Bat. Externa (Isla)</span>
-                                            <span className="text-lg text-slate-400 font-bold">{data.vBatExt > 1.0 ? data.vBatExt.toFixed(1) + 'V' : 'Desconectada'}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-800 rounded-full h-2">
-                                            <div className="bg-purple-500 h-2 rounded-full" 
-                                                 style={{width: `${data.vBatExt > 1.0 ? Math.min(100, Math.max(0, ((data.vBatExt - 11.0)/(14.4 - 11.0)) * 100)) : 0}%`}}></div>
-                                        </div>
+                                        <span className="text-xs text-slate-400 block mb-1 uppercase tracking-wider">Distancia al Maletín</span>
+                                        <span className="text-2xl font-bold text-blue-400">
+                                            {data.distancia > 1000 ? (data.distancia/1000).toFixed(2) + ' km' : Math.round(data.distancia) + ' m'}
+                                        </span>
+                                    </div>
+                                    <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+                                        <i className="fas fa-route text-2xl text-blue-400"></i>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
+                                    <div>
+                                        <span className="text-xs text-slate-400 block mb-1 uppercase tracking-wider">Rumbo de Búsqueda</span>
+                                        <span className="text-2xl font-bold text-accent">
+                                            {translateCardinal(data.rumbo || 'N/A')}
+                                        </span>
+                                        <span className="text-xs text-slate-500 block font-mono">({data.rumbo || '-'})</span>
+                                    </div>
+                                    <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                                        <i className="fas fa-compass text-2xl text-accent"></i>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
+                                    <div>
+                                        <span className="text-xs text-slate-400 block mb-1 uppercase tracking-wider">Calidad Enlace LoRa</span>
+                                        <span className="text-xl font-bold text-slate-200">
+                                            {data.rssi || 0} dBm
+                                        </span>
+                                    </div>
+                                    <div className={`flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 ${getSignalStatus(data.rssi).color}`}>
+                                        <i className="fas fa-signal"></i>
+                                        <span className="text-xs font-bold uppercase tracking-wider">
+                                            {getSignalStatus(data.rssi).text}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
-    
-                            <div className={activeTab === 'gps' ? 'block animate-fade-in' : 'hidden'}>
-                                <div className="bg-cardbg rounded-xl shadow-lg border border-slate-700 overflow-hidden flex flex-col" style={{height: '65vh'}}>
-                                    <div className="p-3 bg-slate-800 border-b border-slate-700 flex justify-between items-center z-20">
-                                        <div>
-                                            <h3 className="text-sm font-bold text-white"><i className="fas fa-location-crosshairs mr-2 text-blue-400"></i>Ubicación en vivo</h3>
-                                            <p className="text-xs text-slate-400">Maletín: {data.lat.toFixed(5)}, {data.lon.toFixed(5)}</p>
-                                        </div>
-                                        {data.lat === 0.0 ? (
-                                            <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded font-bold uppercase">Buscando sats</span>
-                                        ) : (
-                                            <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded font-bold uppercase">Fijado 3D</span>
-                                        )}
-                                    </div>
-                                    <div className="flex-1 relative bg-slate-900 z-10">
-                                        <div id="map"></div>
-                                    </div>
-                                </div>
-                            </div>
-    
-                            <div className={activeTab === 'base' ? 'block animate-fade-in' : 'hidden'}>
-                                <h2 className="text-sm font-bold text-slate-400 mb-3"><i className="fas fa-tower-broadcast mr-2"></i>Centro de Comando (Base)</h2>
-                                <div className="bg-cardbg rounded-xl p-4 shadow-lg border border-slate-700 space-y-4">
-                                    
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="bg-slate-800 p-3 rounded-lg border border-slate-700">
-                                            <span className="text-xs text-slate-400 block mb-1">Latitud Base</span>
-                                            <span className="text-sm text-emerald-400 font-mono font-bold">{data.baseLat !== 0 ? data.baseLat.toFixed(5) : 'Buscando...'}</span>
-                                        </div>
-                                        <div className="bg-slate-800 p-3 rounded-lg border border-slate-700">
-                                            <span className="text-xs text-slate-400 block mb-1">Longitud Base</span>
-                                            <span className="text-sm text-emerald-400 font-mono font-bold">{data.baseLon !== 0 ? data.baseLon.toFixed(5) : 'Buscando...'}</span>
-                                        </div>
-                                    </div>
-    
-                                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
-                                        <div>
-                                            <span className="text-xs text-slate-400 block mb-1 uppercase tracking-wider">Distancia al Maletín</span>
-                                            <span className="text-2xl font-bold text-blue-400">
-                                                {data.distancia > 1000 ? (data.distancia/1000).toFixed(2) + ' km' : Math.round(data.distancia) + ' m'}
-                                            </span>
-                                        </div>
-                                        <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                                            <i className="fas fa-route text-2xl text-blue-400"></i>
-                                        </div>
-                                    </div>
-    
-                                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
-                                        <div>
-                                            <span className="text-xs text-slate-400 block mb-1 uppercase tracking-wider">Rumbo de Búsqueda</span>
-                                            <span className="text-2xl font-bold text-accent">
-                                                {translateCardinal(data.rumbo || 'N/A')}
-                                            </span>
-                                            <span className="text-xs text-slate-500 block font-mono">({data.rumbo || '-'})</span>
-                                        </div>
-                                        <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
-                                            <i className="fas fa-compass text-2xl text-accent"></i>
-                                        </div>
-                                    </div>
-    
-                                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
-                                        <div>
-                                            <span className="text-xs text-slate-400 block mb-1 uppercase tracking-wider">Calidad Enlace LoRa</span>
-                                            <span className="text-xl font-bold text-slate-200">
-                                                {data.rssi || 0} dBm
-                                            </span>
-                                        </div>
-                                        <div className={`flex items-center gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700 ${getSignalStatus(data.rssi).color}`}>
-                                            <i className="fas fa-signal"></i>
-                                            <span className="text-xs font-bold uppercase tracking-wider">
-                                                {getSignalStatus(data.rssi).text}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-    
-                        </main>
-    
-                        <nav className="fixed bottom-0 w-full max-w-md bg-cardbg border-t border-slate-800 flex justify-around py-3 pb-safe z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
-                            <button onClick={() => setActiveTab('telemetria')} className={`flex flex-col items-center transition-colors ${activeTab === 'telemetria' ? 'text-accent' : 'text-slate-500'}`}>
-                                <i className="fas fa-dashboard text-xl mb-1"></i>
-                                <span className="text-[10px] font-bold tracking-wide">PANEL</span>
-                            </button>
-                            <button onClick={() => setActiveTab('gps')} className={`flex flex-col items-center transition-colors ${activeTab === 'gps' ? 'text-blue-400' : 'text-slate-500'}`}>
-                                <i className="fas fa-map-location-dot text-xl mb-1"></i>
-                                <span className="text-[10px] font-bold tracking-wide">MAPA</span>
-                            </button>
-                            <button onClick={() => setActiveTab('base')} className={`flex flex-col items-center transition-colors ${activeTab === 'base' ? 'text-emerald-400' : 'text-slate-500'}`}>
-                                <i className="fas fa-tower-broadcast text-xl mb-1"></i>
-                                <span className="text-[10px] font-bold tracking-wide">BASE</span>
-                            </button>
-                        </nav>
-                    </div>
-                );
-            };
-    
-            const root = ReactDOM.createRoot(document.getElementById('root'));
-            root.render(<App />);
-        </script>
-    </body>
-    </html>
+                        </div>
+
+                    </main>
+
+                    <nav className="fixed bottom-0 w-full max-w-md bg-cardbg border-t border-slate-800 flex justify-around py-3 pb-safe z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.3)]">
+                        <button onClick={() => setActiveTab('telemetria')} className={`flex flex-col items-center transition-colors ${activeTab === 'telemetria' ? 'text-accent' : 'text-slate-500'}`}>
+                            <i className="fas fa-dashboard text-xl mb-1"></i>
+                            <span className="text-[10px] font-bold tracking-wide">PANEL</span>
+                        </button>
+                        <button onClick={() => setActiveTab('gps')} className={`flex flex-col items-center transition-colors ${activeTab === 'gps' ? 'text-blue-400' : 'text-slate-500'}`}>
+                            <i className="fas fa-map-location-dot text-xl mb-1"></i>
+                            <span className="text-[10px] font-bold tracking-wide">MAPA</span>
+                        </button>
+                        <button onClick={() => setActiveTab('base')} className={`flex flex-col items-center transition-colors ${activeTab === 'base' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                            <i className="fas fa-tower-broadcast text-xl mb-1"></i>
+                            <span className="text-[10px] font-bold tracking-wide">BASE</span>
+                        </button>
+                    </nav>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
