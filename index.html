@@ -165,20 +165,26 @@
                 return () => clearInterval(interval);
             }, [wsConnected, bleConnected]);
 
-            // Conexión WebSockets (WiFi)
-            useEffect(() => {
-                let ws;
-                const connectWS = () => {
-                    ws = new WebSocket(`ws://${espIp}:81`);
+            // Referencia para mantener el socket WiFi
+            const wsRef = useRef(null);
+
+            // Conexión WebSockets (WiFi) accionada por botón
+            const connectWiFi = () => {
+                if (wsRef.current) wsRef.current.close();
+                
+                try {
+                    const ws = new WebSocket(`ws://${espIp}:81`);
                     ws.onopen = () => setWsConnected(true);
                     ws.onmessage = (e) => {
                         try { setData(prev => ({...prev, ...JSON.parse(e.data)})); } catch (err) {}
                     };
-                    ws.onclose = () => { setWsConnected(false); setTimeout(connectWS, 3000); };
-                };
-                // connectWS(); // Se puede activar automáticamente o dejarlo para el botón
-                return () => { if(ws) ws.close(); }
-            }, [espIp]);
+                    ws.onclose = () => setWsConnected(false);
+                    ws.onerror = () => setWsConnected(false);
+                    wsRef.current = ws;
+                } catch (error) {
+                    console.error("Error conectando a WiFi:", error);
+                }
+            };
 
             // Conexión Web Bluetooth (BLE)
             const connectBluetooth = async () => {
@@ -205,7 +211,6 @@
                     device.addEventListener('gattserverdisconnected', () => setBleConnected(false));
                 } catch (error) {
                     console.log("Error Bluetooth:", error);
-                    alert("No se pudo conectar al Bluetooth o fue cancelado.");
                 }
             };
 
@@ -277,7 +282,7 @@
                                 <button onClick={connectBluetooth} className="bg-blue-600/20 border border-blue-500/50 text-blue-400 px-3 py-2 rounded text-sm font-bold flex-1 flex justify-center items-center gap-2">
                                     <i className="fab fa-bluetooth-b"></i> Conectar BLE
                                 </button>
-                                <button className="bg-slate-700 px-3 py-2 rounded text-sm text-white font-bold" onClick={() => setEspIp(espIp + ' ')}>
+                                <button className="bg-slate-700 px-3 py-2 rounded text-sm text-white font-bold" onClick={connectWiFi}>
                                     <i className="fas fa-wifi"></i> WiFi
                                 </button>
                             </div>
